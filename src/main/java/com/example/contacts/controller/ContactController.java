@@ -10,15 +10,17 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 @RestController
 @RequestMapping("/contacts")
-@CrossOrigin(origins = "*") // 允许跨域访问，如需限制请根据实际情况配置
+@CrossOrigin(origins = "*") // 允许跨域访问
 public class ContactController {
 
     private final ContactService contactService;
 
-    @Value("${file.upload.dir:src/main/resources/static/uploads}")
+    @Value("${file.upload.dir}") // 上传文件存储在static目录
     private String uploadDir;
 
     public ContactController(ContactService contactService) {
@@ -32,41 +34,45 @@ public class ContactController {
 
     @GetMapping("/{id}")
     public ResponseEntity<?> getById(@PathVariable Integer id) {
-        Contact c = contactService.getById(id);
-        if (c == null) {
+        Contact contact = contactService.getById(id);
+        if (contact == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not found");
         }
-        return ResponseEntity.ok(c);
+        return ResponseEntity.ok(contact);
     }
 
     @PostMapping
-    public ResponseEntity<?> create(@RequestParam String name,
-                                    @RequestParam String phone,
-                                    @RequestParam(required = false) String email,
-                                    @RequestParam(required = false) MultipartFile avatar) {
+    public ResponseEntity<?> create(
+            @RequestParam String name,
+            @RequestParam String phone,
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) MultipartFile avatar
+    ) {
         if (name.isEmpty() || phone.isEmpty()) {
             return ResponseEntity.badRequest().body("Name and phone are required");
         }
 
-        Contact c = new Contact();
-        c.setName(name);
-        c.setPhone(phone);
-        c.setEmail(email);
+        Contact contact = new Contact();
+        contact.setName(name);
+        contact.setPhone(phone);
+        contact.setEmail(email);
 
         if (avatar != null && !avatar.isEmpty()) {
-            c.setAvatar(saveFile(avatar));
+            contact.setAvatar(saveFile(avatar)); // 保存文件
         }
 
-        contactService.save(c);
-        return ResponseEntity.ok("success");
+        contactService.save(contact);
+        return ResponseEntity.ok(contact);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> update(@PathVariable Integer id,
-                                    @RequestParam String name,
-                                    @RequestParam String phone,
-                                    @RequestParam(required = false) String email,
-                                    @RequestParam(required = false) MultipartFile avatar) {
+    public ResponseEntity<?> update(
+            @PathVariable Integer id,
+            @RequestParam String name,
+            @RequestParam String phone,
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) MultipartFile avatar
+    ) {
         Contact existing = contactService.getById(id);
         if (existing == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Not found");
@@ -80,11 +86,11 @@ public class ContactController {
         existing.setEmail(email);
 
         if (avatar != null && !avatar.isEmpty()) {
-            existing.setAvatar(saveFile(avatar));
+            existing.setAvatar(saveFile(avatar)); // 保存新文件
         }
 
         contactService.save(existing);
-        return ResponseEntity.ok("success");
+        return ResponseEntity.ok(existing);
     }
 
     @DeleteMapping("/{id}")
@@ -96,25 +102,39 @@ public class ContactController {
         return ResponseEntity.ok("success");
     }
 
+    /**
+     * 保存文件到 static/uploads 目录
+     * @param file 上传的文件
+     * @return 文件的相对路径
+     */
     private String saveFile(MultipartFile file) {
+        // 1. 获取文件原始名称
         String originalFilename = file.getOriginalFilename();
         String ext = "";
         if (originalFilename != null && originalFilename.contains(".")) {
             ext = originalFilename.substring(originalFilename.lastIndexOf('.'));
         }
-        String fileName = System.currentTimeMillis() + "-" + (int)(Math.random()*10000) + ext;
-        File dir = new File(uploadDir);
+        // 2. 生成唯一文件名
+        String fileName = System.currentTimeMillis() + "-" + (int)(Math.random() * 10000) + ext;
+
+        // 3. 动态生成目录 (按日期分目录保存)
+        String dateFolder = new SimpleDateFormat("yyyy/MM/dd").format(new Date());
+        String uploadPath = System.getProperty("user.dir") + "/uploads/" + dateFolder; // 动态路径：项目运行目录 + 日期子目录
+        File dir = new File(uploadPath);
         if (!dir.exists()) {
-            dir.mkdirs();
+            dir.mkdirs(); // 创建目录
         }
 
+        // 4. 保存文件到动态路径
         File dest = new File(dir, fileName);
         try {
-            file.transferTo(dest);
+            file.transferTo(dest); // 保存文件
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new RuntimeException("文件保存失败", e); // 抛出异常
         }
 
-        return "/uploads/" + fileName; // 返回可供前端访问的相对路径
+        // 5. 返回文件的相对访问路径
+        return "/uploads/" + dateFolder + "/" + fileName; // 返回前端可访问的路径
     }
+
 }
